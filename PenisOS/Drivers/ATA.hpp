@@ -46,12 +46,10 @@ private:
         uint64_t Max48;
         unsigned char slavebit = 8U;
 
-        void Write28(uint32_t LBA, byte* RawData) {
+        void SetSlavebit() {
             if(DType == Master) {
                 slavebit = 0U;
             } else slavebit = 8U; // 00001000 aka set the slavebit
-
-            
         }
     };
     Drive Master;
@@ -103,12 +101,20 @@ private:
             // read the values
             for(int i = 0; i < 256; i++) {
                 iden[i] = inw(IO_Base+0); // reads one value
+                NS_DELAY(); // give delay to allow for DRQ to reset
             }
             Ret.identify_return = iden;
             Ret = ParseIdentify(Ret);
             FlushCache();
 
             return Ret;
+        }
+    }
+    void NS_DELAY() {
+        byte current = inb(CTRL_Base+0);
+        for(int i = 0; i < 13; i++) {
+            if(inb(CTRL_Base+0) != current) 
+                return;
         }
     }
     Drive ParseIdentify (Drive toParse) {
@@ -170,7 +176,38 @@ private:
             return inb(CTRL_Base+0); // return last value
         }
     }
-    
+    // writes to a 28 bit LBA
+    uint16_t* Read28(uint32_t LBA, Drive drive, int SectorCount=1){
+        drive.SetSlavebit(); // make sure slavebit is accurate
+        if(drive.DType == Drive::Master) 
+            outb(IO_Base+6, 0xE0 |  (drive.slavebit << 4) | ((LBA >> 24) & 0x0F));
+        else 
+            outb(IO_Base+6, 0xF0 |  (drive.slavebit << 4) | ((LBA >> 24) & 0x0F));
+        outb(IO_Base+1, 0x00); // waste a tiny bit of cpu time
+        outb(IO_Base+2, (unsigned char)SectorCount); // send scount
+        outb(IO_Base+3, (unsigned char)LBA); // low 8 bits
+        outb(IO_Base+4, (unsigned char)(LBA >> 8)); // mid 8 bits
+        outb(IO_Base+5, (unsigned char)(LBA >> 16)); // high 8 bits
+
+        unsigned char current_status = inb(CTRL_Base+0); // get the status
+        // now to read
+        outb(IO_Base+7, 0x20); // READ SECTORS command
+
+        while(current_status == inb(CTRL_Base+0)); // poll
+        // now actually read all uint16_t's
+        uint16_t* ret;
+        for(int i = 0; i < 256*SectorCount; i++) {
+            ret[i] = inw(IO_Base+0);
+            NS_DELAY(); // give delay for resetting DRQ/BSY
+            
+            // if its about to hit a new sector, flush n' delay
+            if(!(i % 256) && i) {
+                FlushCache(); // prevent bad sectors
+                NS_DELAY(); // make sure to flush out old status
+            }
+        }
+        return ret; // return the data buffer
+    }
     enum ATA_CTRL {
         Primary_C = 0x3F6,
         Secondary_C = 0x376,
