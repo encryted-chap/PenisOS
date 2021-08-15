@@ -101,8 +101,9 @@ private:
             // read the values
             for(int i = 0; i < 256; i++) {
                 iden[i] = inw(IO_Base+0); // reads one value
-                NS_DELAY(); // give delay to allow for DRQ to reset
-            }
+                
+            } 
+            NS_DELAY(); // give delay to allow for DRQ to reset
             Ret.identify_return = iden;
             Ret = ParseIdentify(Ret);
             FlushCache();
@@ -198,14 +199,13 @@ private:
         uint16_t* ret;
         for(int i = 0; i < 256*SectorCount; i++) {
             ret[i] = inw(IO_Base+0);
-            NS_DELAY(); // give delay for resetting DRQ/BSY
             
             // if its about to hit a new sector, flush n' delay
             if(!(i % 256) && i) {
                 FlushCache(); // prevent bad sectors
                 NS_DELAY(); // make sure to flush out old status
             }
-        }
+        } NS_DELAY(); // give delay for resetting DRQ/BSY
         return ret; // return the data buffer
     }
     enum ATA_CTRL {

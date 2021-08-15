@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Types.hpp"
 bool GetBit(byte value, int bit) {
-    return (bool)((value >> bit) & 0x01);
+    return ((value >> bit) & 0x01) != 0;
 }
 static inline void outb(uint16_t port, uint8_t val)
 {
@@ -39,3 +39,26 @@ static inline uint32_t ind(uint16_t port)
                    : "Nd"(port) );
     return ret;
 }
+void memcpy(char* src, char* dest, uint16_t length) {
+    register uint16_t* cx asm("cx");
+    register uint16_t* si asm("si"); // from
+    register uint16_t* di asm("di"); // to
+
+    si = (uint16_t*)src;
+    di = (uint16_t*)dest;
+    cx[0] = length;
+    asm("rep movsb");  
+}
+
+template<class T> class IOStream {
+public:
+    IOStream(uint16_t address) {
+        buffer = (T*)address; // initialize a pointer at the given address
+    }
+    T operator << (T other) {
+        
+    }
+private:
+    int index = 0;
+    T* buffer;
+};
