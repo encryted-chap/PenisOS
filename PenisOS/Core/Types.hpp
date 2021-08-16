@@ -11,9 +11,9 @@ template<class T> class List {
 public:
     bool overflow = false;
     List() {
-        index = 0;
-        max = 0;
-        buffer[0] = (T)'\0';
+        index = 0; // start at 0 obviously
+        max = 0; // size limitation is infinite
+        buffer[0] = (T)'\0'; // make sure this is set to 0 so it aint confusing
     }
     // adds a single item to the end of this list
     void Add(T item) {
@@ -25,7 +25,57 @@ public:
             buffer[index] = item;
         overflow = false;
     }
+    // adds multiple to this list
+    void AddRange(T* values, int length) {
+        for(int i = 0; i < length; i++) {
+            Add(values[i]); // add the next value
+            if(overflow) break; // overflows aren't pog
+        }
+    }
+    // appends another list to this one
+    void Append(List<T> values) {
+        for(int i = 0; i < values.GetLength(); i++) {
+            Add(*values[i]);
+            if(overflow) break;
+        }
+    }
 
+    // removes any matching variables, returns the amount removed
+    int RemoveSpecific(T value) {
+        if(!Contains(value)) return 0;
+        int ret = 0;
+        while(GetFirst(value) != -1) {
+            RemoveAt(GetFirst(value));
+            ++ret;
+            if(!GetLength()) break;
+        }
+        return ret;
+    }
+    // gets the first match for this value, returns the index. returns -1 if it doesn't contain this value
+    int GetFirst(T value) {
+        if(!Contains(value)) return -1;
+        else {
+            for(int i = 0; i < GetLength(); i++) {
+                if(buffer[i] == value)
+                    return i;
+            }
+            return -1; // if it somehow doesn't contain this, return -1
+        }
+    }
+    // empties this list, resetting its index to 0 and clearing its entries
+    void Empty() {
+        while(GetLength()) {
+            RemoveLast(); // remove a single entry
+        }
+    }
+    // removes the topmost value in the list
+    void RemoveLast() {
+        buffer[--index] = (T)'\0'; // remove last and update index
+    }
+    // use like: *listvar[0] = value
+    T* operator [] (int index) {
+        return &buffer[index];
+    }
     // removes a single item from this list
     void RemoveAt(int index) {
         if(max != 0 && index > max) {
@@ -74,12 +124,46 @@ public:
             }
         } else return;
     }
+    
 private:
     int index;
     int max;
     T* buffer;
 };
-
+template<class T> class DynamicBitArray {
+public:
+    DynamicBitArray(T val) {
+        DynVal = val;
+        maximum = sizeof(T)*8; // sizeof = byte size, 8 bits in a byte
+        UpdateBits(); // make sure to update
+    }
+    // updates the dynamic value based on the bits inside the byte
+    void UpdateVal() {
+        DynVal = (T)0;
+        for(int i = 0; i < maximum; i++) {
+            if(b[i])
+                DynVal |= (1 << i);
+            else continue;
+        }
+    }
+    operator T() {
+        UpdateVal();
+        return DynVal;
+    }
+    // updates all the bits
+    void UpdateBits() {
+        for(int i = 0; i < maximum; i++) {
+            b[i] = (DynVal & (1 << i)) != 0;
+        }
+    }
+    bool* operator [] (int index) {
+        return &b[index];
+    }
+    T DynVal;
+private:
+    int maximum;
+    bool b[sizeof(T)*8];
+};
 class BitArray {
 public:
     BitArray(byte val) {
