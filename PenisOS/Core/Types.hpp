@@ -204,3 +204,7 @@ public:
 private:
     bool b[8];
 };
+class string {
+public:
+    
+};

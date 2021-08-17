@@ -3,6 +3,11 @@
 bool GetBit(byte value, int bit) {
     return ((value >> bit) & 0x01) != 0;
 }
+template<class T> bool GetBit(T value, int bit) {
+    if(bit > sizeof(T) * 8) 
+        return false;
+    else return (value & (1 << bit)) != 0;
+}
 static inline void outb(uint16_t port, uint8_t val)
 {
     asm volatile ( "outb %0, %1" : : "a"(val), "Nd"(port) );

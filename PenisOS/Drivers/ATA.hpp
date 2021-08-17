@@ -37,12 +37,10 @@ private:
                 // check if neither working
                 if(!Master.Active && !Slave.Active) 
                     continue; // switch to next bus
-                WorkingBus = true; // bus has a drive connected, cool?
+                else WorkingBus = true; // bus has a drive connected, cool?
             }
         }
     }
-    
-    
     int busIndex = 0; // used for controlling which bus is currently active
     // a structure representing a single drive
     struct Drive {
@@ -60,8 +58,15 @@ private:
         int CurrentUDMA;
         uint32_t Max28;
         uint64_t Max48;
+
         unsigned char slavebit = 8U;
         void ParseIdentify() {
+            Supports48 = GetBit<uint16_t>(identify_return[83], 10); // bit 10 of [83] is set if drive supports LBA48
+
+            Max28 = ((uint32_t*)&identify_return[60])[0]; // maximum 28 bit LBA address
+            Max48 = ((uint64_t*)&identify_return[100])[0]; // maximum 48 bit LBA address
+
+            if(Max28) Supports28 = true; // if max28 is nonzero, it supports 28 bit lba
 
         }
         // sets the slavebit depending on the current drive type
@@ -70,9 +75,50 @@ private:
                 slavebit = 0U;
             } else slavebit = 8U; // 00001000 aka set the slavebit
         }
+        // gets a printable description of this drive
+        char* DriveInfo() {
+            
+        }
     };
+public:
     Drive Master, Slave; // is this racist? i just follow the specs i don't make them :/
+    // writes to a drive using 28 bit LBA
+    void Write28(Drive drive, uint32_t LBA, unsigned char sectorcount, unsigned char* data) {
+        drive.SetSlavebit(); // make sure slavebit is accurate
+        outb(IO_Base+6, (0xD0 + drive.DType) | (drive.slavebit << 4) | ((LBA >> 24) & 0x0F)); // select a drive 
+        for(int i = 0; i < 14; i++) 
+            inb(IO_Base+7); // 400ns delay after selecting a drive
+        outb(IO_Base+2, sectorcount); // send sectorcount to drive
+        outb(IO_Base+3, (unsigned char)LBA); // send low 8 bits of LBA
+        outb(IO_Base+4, (unsigned char)LBA >> 8); // send mid 8 bits
+        outb(IO_Base+5, (unsigned char)LBA >> 16); // send high 8 bits
 
+        
+    }
+    uint16_t* Read48(Drive drive, uint32_t LBA, unsigned char sectorcount) {
+        drive.SetSlavebit(); // make sure slavebit is accurate
+        outb(IO_Base+6, (0xD0 + drive.DType) | (drive.slavebit << 4) | ((LBA >> 24) & 0x0F)); // select a drive 
+        for(int i = 0; i < 14; i++) 
+            inb(IO_Base+7); // 400ns delay after selecting a drive
+
+        outb(IO_Base+2, sectorcount); // send sectorcount to drive
+        outb(IO_Base+3, (unsigned char)LBA); // send low 8 bits of LBA
+        outb(IO_Base+4, (unsigned char)LBA >> 8); // send mid 8 bits
+        outb(IO_Base+5, (unsigned char)LBA >> 16); // send high 8 bits
+
+        outb(IO_Base+7, 0x20); // READ SECTORS command
+        while(inb(IO_Base+7)); // poll for reading
+
+        uint16_t* ret;
+        for(int i = 0; i < sectorcount * 256; i++) {
+            if(i != 0 && i % 256) 
+                for(int x = 0; x < 14; x++) inb(CTRL_Base); // 400ns delay every sector
+            ret[i] = inw(IO_Base); // get single word from data buffer
+        }
+        for(int x = 0; x < 14; x++) inb(CTRL_Base); // 400ns delay
+        return ret;
+    }
+private:
     // identifies a drive, returning the information to the drives pointer
     void Identify(Drive* toSelect) {
         outb(IO_Base+6, toSelect->DType); // send drive type to drive select port
@@ -92,6 +138,7 @@ private:
         if(inb(IO_Base+7) == 0) {
             // drive does not exist
             toSelect->Active = false;
+            return; 
         } else {
             // wait for BSY to clear
             while(inb(IO_Base+7) == 8) {
@@ -106,11 +153,14 @@ private:
                     return;
                 }
             }
-            toSelect->Active = true; // this drive is working
+            for(int i = 0; i < 14; i++) inb(IO_Base+7); // 400ns delay
 
             // now we can read and return 256 uint16_t values
-            for(int i = 0; i < 256; i++) 
+            for(int i = 0; i < 256; i++) {
                 toSelect->identify_return[i] = inw(IO_Base);
+                if(!toSelect->Active && toSelect->identify_return[i] != 0) 
+                    toSelect->Active = true;
+            }
             for(int i = 0; i < 14; i++) {
                 inb(IO_Base+7); // 400ns delay (in case there's another select right after this one)s
             }
@@ -119,13 +169,17 @@ private:
         }
         
     }
+    // base IO ports for ATA buses
     uint8_t ATA_IO[4] {
         0x1F0, 0x170, 0x1E8, 0x168
     };
+    // base Control ports for ATA buses
     uint8_t ATA_CTRL[4] {
         0x3F6, 0x376, 0x3E6, 0x366
     };
-    unsigned char IO_Base = 0x00;
+    // the current IO base for this ATA bus
+    unsigned char IO_Base = 0x00; 
+    // the current Control base for this ATA bus
     unsigned char CTRL_Base = 0x00;
 
 };
