@@ -116,6 +116,10 @@ public:
             ((char*)0xb8000)[--Index] = ' ';
         }
     }
+    static void Write(bool val) {
+        if(val) Write("True");
+        else Write("False");
+    }
     static void Write(char* str) {
         for(int i = 0; str[i] != '\0'; i++)
             Write(str[i]);

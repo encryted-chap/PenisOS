@@ -1,10 +1,11 @@
 #pragma once
 #include "Core/Types.hpp"
 #include "Core/IO.hpp"
+#include "Core/Console.hpp"
 
 // the maximum possible LBA28 address
 #define LBA28_CAP 0x0FFFFFFF
-
+int CurrentID = 0;
 // an ambiguous class for handling ATA access. This will cycle through each
 // ATA bus depending on if the last one is full or not
 class ATA_Bus {
@@ -17,6 +18,7 @@ private:
     // switches the current bus to the next bus
     void SwitchBus() {
         bool WorkingBus = false;
+        int bus = 0;
         while(!WorkingBus) {
             // iterate through to next bus offset
             CTRL_Base = ATA_CTRL[++busIndex];
@@ -35,9 +37,12 @@ private:
                 Identify(&Slave);
 
                 // check if neither working
-                if(!Master.Active && !Slave.Active) 
+                if(!Master.Active && !Slave.Active) {
+                    ++bus;
                     continue; // switch to next bus
+                }
                 else WorkingBus = true; // bus has a drive connected, cool?
+                
             }
         }
     }
@@ -59,15 +64,19 @@ private:
         uint32_t Max28;
         uint64_t Max48;
 
+        int DriveID; 
         unsigned char slavebit = 8U;
         void ParseIdentify() {
+            DriveID = CurrentID++;
             Supports48 = GetBit<uint16_t>(identify_return[83], 10); // bit 10 of [83] is set if drive supports LBA48
 
-            Max28 = ((uint32_t*)&identify_return[60])[0]; // maximum 28 bit LBA address
-            Max48 = ((uint64_t*)&identify_return[100])[0]; // maximum 48 bit LBA address
+            // maximum 28 bit LBA address
+            Max28 = ((identify_return[61] >> 16) | identify_return[60]);
+            if(Max28 > 0 && Max28 <= LBA28_CAP) Supports28 = true; // if max28 is nonzero, it supports 28 bit lba
 
-            if(Max28) Supports28 = true; // if max28 is nonzero, it supports 28 bit lba
-
+            // maximum 48 bit LBA address
+            Max48 = (uint64_t)((identify_return[103] >> 16) | identify_return[102]) | ((identify_return[101] >> 16) | identify_return[100]);
+            if(Max48 > 0) Supports48 = true;
         }
         // sets the slavebit depending on the current drive type
         void SetSlavebit() {
@@ -75,16 +84,40 @@ private:
                 slavebit = 0U;
             } else slavebit = 8U; // 00001000 aka set the slavebit
         }
-        // gets a printable description of this drive
+        // prints a description of this drive
         char* DriveInfo() {
-            
+            if(!this->Active) return "";
+            Console::Write('\n');
+            Console::Write("--------------------");
+            if(DType == DriveType::Master) Console::Write("\nDrive Type: Master");
+            else Console::Write("\nDriveType: Slave");
+            Console::Write("\nSupports 28-bit: ");
+            Console::Write(Supports28);
+            Console::Write("\nSupports 48-bit: ");
+            Console::Write(Supports48);
+            Console::Write("\nSize48: ");
+            Console::Write((int)(Max48*512));
+            Console::Write(" bytes");
+            Console::Write("\nSize28: ");
+            Console::Write((int)(Max28*512));
+            Console::Write(" bytes");
+            Console::Write("\nDriveID = ");
+            Console::Write(DriveID);
+            Console::Write('\n');
+            // chimay's feet go here: 
         }
     };
+    void CacheFlush() {
+        outb(IO_Base+7, 0xE7); // cache flush to command register
+        while(inb(IO_Base+7) == 0x80); // wait for BSY
+    }
 public:
     Drive Master, Slave; // is this racist? i just follow the specs i don't make them :/
     // writes to a drive using 28 bit LBA
-    void Write28(Drive drive, uint32_t LBA, unsigned char sectorcount, unsigned char* data) {
+    void Write28(Drive drive, uint32_t LBA, unsigned char sectorcount, uint16_t *data) {
         drive.SetSlavebit(); // make sure slavebit is accurate
+        if(LBA+(sectorcount-1) > drive.Max28) return;
+
         outb(IO_Base+6, (0xD0 + drive.DType) | (drive.slavebit << 4) | ((LBA >> 24) & 0x0F)); // select a drive 
         for(int i = 0; i < 14; i++) 
             inb(IO_Base+7); // 400ns delay after selecting a drive
@@ -93,10 +126,25 @@ public:
         outb(IO_Base+4, (unsigned char)LBA >> 8); // send mid 8 bits
         outb(IO_Base+5, (unsigned char)LBA >> 16); // send high 8 bits
 
-        
+        outb(IO_Base+7, 0x30); // WRITE SECTORS command
+
+        for(int i = 0; i < 14; i++) inb(IO_Base+7); // 400ns delay
+
+        for(int i = 0; i < sectorcount * 256; i++) {
+            if(i != 0 && !(i % 256)) {
+                CacheFlush();
+                for(int x = 0; x < 14; x++) inb(IO_Base+7); // 400ns delay
+            }
+            outw(IO_Base, data[i]); // feed data to disk
+            asm("jmp .+2"); // tiny delay between every write command
+        }
+        for(int i = 0; i < 14; i++) inb(IO_Base+7); // 400ns delay
+        CacheFlush(); // clear to prevent bad sectors
     }
-    uint16_t* Read48(Drive drive, uint32_t LBA, unsigned char sectorcount) {
+    uint16_t* Read28(Drive drive, uint32_t LBA, unsigned char sectorcount) {
         drive.SetSlavebit(); // make sure slavebit is accurate
+        if(LBA+(sectorcount-1) > drive.Max28) return (uint16_t*)"ERR:OVMAX"; // return error buffer
+
         outb(IO_Base+6, (0xD0 + drive.DType) | (drive.slavebit << 4) | ((LBA >> 24) & 0x0F)); // select a drive 
         for(int i = 0; i < 14; i++) 
             inb(IO_Base+7); // 400ns delay after selecting a drive
@@ -107,15 +155,17 @@ public:
         outb(IO_Base+5, (unsigned char)LBA >> 16); // send high 8 bits
 
         outb(IO_Base+7, 0x20); // READ SECTORS command
-        while(inb(IO_Base+7)); // poll for reading
+        for(int i = 0; i < 14; i++) inb(IO_Base+7); // 400ns delay
 
         uint16_t* ret;
         for(int i = 0; i < sectorcount * 256; i++) {
-            if(i != 0 && i % 256) 
+            if(i != 0 && !(i % 256)) {
                 for(int x = 0; x < 14; x++) inb(CTRL_Base); // 400ns delay every sector
+            }
             ret[i] = inw(IO_Base); // get single word from data buffer
         }
         for(int x = 0; x < 14; x++) inb(CTRL_Base); // 400ns delay
+        CacheFlush(); // make sure to clear after drive operation
         return ret;
     }
 private:

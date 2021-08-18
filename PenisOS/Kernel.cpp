@@ -11,7 +11,9 @@ void Entry() {
     Console::KernelMsg("Initializing ATA driver...");
 
     ATA_Bus bus = ATA_Bus(); // create new ATA ambiguous driver
-    if(bus.Master.Active || bus.Slave.Active) {
-        Console::SuccessMsg("ATA initialized, at least 1 drive active");
-    } else return;
+    if(bus.Master.Active || bus.Slave.Active) // success only if some drive active
+        Console::SuccessMsg("Driver initialized!");
+    else Console::FailMsg("Driver failed somehow, is your drive specs ATA?");
+    bus.Slave.DriveInfo();
+    bus.Master.DriveInfo();
 }
