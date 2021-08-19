@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Types.hpp"
+
 bool GetBit(byte value, int bit) {
     return ((value >> bit) & 0x01) != 0;
 }
@@ -44,15 +45,34 @@ static inline uint32_t ind(uint16_t port)
                    : "Nd"(port) );
     return ret;
 }
-void memcpy(char* src, char* dest, uint16_t length) {
-    register uint16_t* cx asm("cx");
-    register uint16_t* si asm("si"); // from
-    register uint16_t* di asm("di"); // to
-
-    si = (uint16_t*)src;
-    di = (uint16_t*)dest;
-    cx[0] = length;
-    asm("rep movsb");  
+void memcpy(const unsigned char* src, unsigned char* dest, size_t len) {
+    size_t og_len = len;
+    while(len) {
+        // if len > 8 bytes, copy a 64 bit value (8 bytes)
+        if(len > sizeof(uint64_t)) {
+            *(uint64_t*)dest = *(uint64_t*)src;
+            dest += sizeof(uint64_t);
+            src += sizeof(uint64_t);
+            len -= sizeof(uint64_t);
+        } else if(len > sizeof(uint32_t)) {
+            // copy a 32 bit value (4 bytes)
+            *(uint32_t*)dest = *(uint32_t*)src;
+            dest += sizeof(uint32_t);
+            src += sizeof(uint32_t);
+            len -= sizeof(uint32_t);
+        } else if(len > sizeof(uint16_t)) {
+            *(uint16_t*)dest = *(uint16_t*)src;
+            dest += sizeof(uint16_t);
+            src += sizeof(uint16_t);
+            len -= sizeof(uint16_t);
+        } else {
+            *dest++ = *src++;
+            len--;
+        }
+    }
+    src -= og_len;
+    dest -= og_len;
+    return;
 }
 
 template<class T> class IOStream {

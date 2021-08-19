@@ -1,6 +1,8 @@
 #include "Drivers/ATA.hpp"
 #include "Core/Types.hpp"
+#include "Drivers/IRQ.hpp"
 #include "Core/Console.hpp"
+#include "Core/String.hpp"
 extern "C" void Entry();
 
 // the entry point of PenisOS
@@ -8,12 +10,5 @@ extern "C" void Entry();
 void Entry() {
     // initialize the console
     Console::Initialize();
-    Console::KernelMsg("Initializing ATA driver...");
-
-    ATA_Bus bus = ATA_Bus(); // create new ATA ambiguous driver
-    if(bus.Master.Active || bus.Slave.Active) // success only if some drive active
-        Console::SuccessMsg("Driver initialized!");
-    else Console::FailMsg("Driver failed somehow, is your drive specs ATA?");
-    bus.Slave.DriveInfo();
-    bus.Master.DriveInfo();
+    Console::SuccessMsg("Boot success! Kernel initializing");
 }
