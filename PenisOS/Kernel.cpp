@@ -11,4 +11,6 @@ void Entry() {
     // initialize the console
     Console::Initialize();
     Console::SuccessMsg("Boot success! Kernel initializing");
+    string x = "hi";
+    
 }
