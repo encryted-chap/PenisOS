@@ -1,0 +1,64 @@
+Instruction Set for PenisOS
+
+values (regs):
+uint32_t | A, X, Y
+uint16_t | Am, Xm, Ym
+
+0x1F - NOP | wastes an instruction cycle 
+0x00 - CLA | clears the 32-bit accumulator
+0x01 - CLAm | clears the 16-bit accumulator
+0x04 - CLH | clears the high 16 bits of A 
+0x05 - CLL | clears the low 16 bits of A
+
+0x02 - FLH | fills the high 16 bits of A with Am 
+0x03 - FLL | fills the low 16 bits of A with Am 
+
+0x06 - FLHm | fills Am with the high 16 bits of A 
+0x07 - FLLm | fills Am with the low 16 bits of A
+
+0x08, [reg32/reg16] - MOVi | fills either Am or A with the reg32/reg16 depending on whether it's 16 or 32 bit 
+0x09, [reg32/reg16] - MOVo | fills the reg32/reg16 with A or Am depending on whether it's 16 or 32 bit 
+
+0x0A, [imm32] - FLA | Fills A with an immediate value 
+0x0B, [imm16] - FLAm | Fills Am with an immediate value
+
+0x0C - Push | pushes A to the stack 
+0x0D - Pushm | pushes Am to the stack (as a 32 bit value with top bits cleared)
+0x0E - Pop | pops the top stack value into A
+0x0F - Popm | pops the top stack value, and fills Am with the low 16 bits 
+0x10 - PopN | removes the top stack value and destroys it 
+
+0x11 - MovS | pops a 32-bit value into a address stored at A (A is cleared if successful) 
+0x12 - MovSW | pops the low 16-bits of a 32-bit value into the address stored in A (A is cleared if successful)
+0x13 - GetAt | moves the 32-bit value stored at the address in A into A
+
+0x14 - Add | pops two values off the stack, adds them, places result in A 
+0x15 - Sub | pops two values off the stack, subtracts them, places result in A 
+0x16 - Mul | pops two values off the stack, multiplies them, places result in A 
+0x17 - Div | pops two values off the stack, divides them, places result in A and pushes remainder
+0x18 - Mod | pops two values off the stack, divides them, places remainder in A and does not store result 
+
+0x19 - LSL | shifts the bits in A left once
+0x1A - LSR | shifts the bits in A right once 
+0x1B - OR | pops a value off the stack and OR's it with A 
+0x1C - NOT | reverses all bits in A (0 turns to 1, and 1 turns to 0)
+0x1D - XOR | same as OR but only if one of the bits is 0 and the other is 1, otherwise clear 
+0x1E - AND | pops a value off the stack and AND's it with A 
+0x20 - BGet | pops a value off the stack (n) and tests n bit in A, if set push a one to the stack, otherwise push 0
+0x21 - BSet | pops a value off the stack (n) and sets n bit in A
+0x22 - BTog | pops a value off the stack (n) and if set, clear bit n, else set bit n in A
+
+0x23 - THROW | throws an exception. The exception thrown depends on the value in A (the err code)
+0x24 - KCall | calls the kernel using stack values (pops callcode, pops address pointing to data, pops len, calls)
+
+
+Error Codes:
+0 - Unknown error: this means either the error is unexplainable or everything is so inexplicably broken that a proper
+code couldn't even be thrown into A. 
+1 - Stack Underflow: You attempted to pop from a stack which didn't have any values
+2 - Stack Unrecoverable: Somehow, some way, you destroyed the stack to the point where i dont even know what the fuck you did
+3 - Stack Overflow: You went over the chosen stack limit or pushed into protected memory
+4 - Memory Access Violation: Means that protected memory was accessed,
+and the whole fucking point is that it isn't supposed to be, bad program >:|
+5 - I/O Access Violation: Another process is using the selected resource
+6 - Priveledge Denied: This programs priveledge wasn't authorized to do this operation
